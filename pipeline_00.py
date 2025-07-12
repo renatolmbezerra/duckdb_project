@@ -3,48 +3,59 @@ import duckdb
 import pandas as pd
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
+from typing import List
 
+from duckdb import DuckDBPyRelation
+from pandas import DataFrame
+
+load_dotenv()
 
 # Função para listar arquivos .csv da pasta local
-def listar_arquivos_csv(diretorio):
+def listar_arquivos_csv(diretorio: str) -> List[str]:
     arquivos_csv = []
-    for arquivo in os.listdir(diretorio):
+    todos_os_arquivos = os.listdir(diretorio)
+    for arquivo in todos_os_arquivos:
         if arquivo.endswith('.csv'):
-            arquivos_csv.append(arquivo)
+            caminho_completo = os.path.join(diretorio, arquivo)
+            arquivos_csv.append(caminho_completo)
     return arquivos_csv
 
-# Função para ler um arquivo CSV usando duckdb
-def ler_csv(caminho_arquivo):
-    return duckdb.read_csv(caminho_arquivo)
+# Função para ler um arquivo CSV usando duckdb e retornar um DataFrame do duckdb
+def ler_csv(caminho_arquivos):
+    df_duckdb = duckdb.read_csv(caminho_arquivos)
+    return df_duckdb
 
-# Função principal para empilhar todos os CSVs da pasta
-def empilhar_csvs(diretorio):
-    arquivos_csv = listar_arquivos_csv(diretorio)
-    dataframes = []
+ # Transformação do df_duckdb para um df_Pandas
+def transformar(df: DuckDBPyRelation) -> DataFrame:
+    df_transformado = duckdb.sql("SELECT *, (quantidade * valor) AS total_vendas FROM df").df()
+    return df_transformado
 
-    for nome_arquivo in arquivos_csv:
-        caminho_completo = os.path.join(diretorio, nome_arquivo)
-        df = ler_csv(caminho_completo)
-        dataframes.append(df)
+# Função para salvar o df_Pandas no PostgreSQL
+def salvar_no_postgres(df_pandas, tabela):
+    # Carregar as variáveis de ambiente
+    usuario = os.getenv('POSTGRES_USER')
+    senha = os.getenv('POSTGRES_PASSWORD')
+    host = os.getenv('POSTGRES_HOST')
+    porta = os.getenv('POSTGRES_PORT')
+    banco = os.getenv('POSTGRES_DB')
 
-    if len(dataframes) > 0:
-        df_concatenado = duckdb.sql("SELECT * FROM dataframes").df()
-        return df_concatenado
-    else:
-        return pd.DataFrame()  # DataFrame vazio
+    # Criar a string de conexão
+    conexao_str = f'postgresql://{usuario}:{senha}@{host}:{porta}/{banco}'
+    
+    # Criar o engine do SQLAlchemy
+    engine = create_engine(conexao_str)
+
+    # Salvar o DataFrame Pandas no PostgreSQL
+    df_pandas.to_sql(tabela, con=engine, if_exists='append', index=False)
+
 
 # Execução principal
 if __name__ == "__main__":
     diretorio_local = './data'
-    arquivos = listar_arquivos_csv(diretorio_local)
+    lista_de_arquivos = listar_arquivos_csv(diretorio_local)
+    for arquivo in lista_de_arquivos:
+        duckdb_df = ler_csv(arquivo)
+        pandas_df_transformado = transformar(duckdb_df)
+        salvar_no_postgres(pandas_df_transformado, 'vendas_calculado')
+        print(f"Arquivo {arquivo} processado e salvo na tabela 'vendas_calculado'.")
 
-    if len(arquivos) == 0:
-        print("⚠️ Nenhum arquivo CSV encontrado.")
-    else:
-        print("📁 Arquivos encontrados:")
-        for arquivo in arquivos:
-            print(f" - {arquivo}")
-
-        df_final = empilhar_csvs(diretorio_local)
-        print("\n✅ Dados empilhados com sucesso.")
-        print(df_final.head())
