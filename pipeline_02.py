@@ -37,19 +37,28 @@ def arquivos_processados(con):
     return {row[0] for row in resultado}
 
 # Função para listar arquivos .csv da pasta local
-def listar_arquivos_csv(diretorio: str) -> List[str]:
-    arquivos_csv = []
+def listar_arquivos_e_tipos(diretorio: str) -> List[str]:
+    """Lista arquivos e identifica se são CSV, JSON ou Parquet."""
+    arquivos_e_tipos = []
     todos_os_arquivos = os.listdir(diretorio)
     for arquivo in todos_os_arquivos:
-        if arquivo.endswith('.csv'):
+        if arquivo.endswith('.csv') or arquivo.endswith('.json') or arquivo.endswith('.parquet'):
             caminho_completo = os.path.join(diretorio, arquivo)
-            arquivos_csv.append(caminho_completo)
-    return arquivos_csv
+            tipo = arquivo.split('.')[-1]
+            arquivos_e_tipos.append((caminho_completo, tipo))
+    return arquivos_e_tipos
 
 # Função para ler um arquivo CSV usando duckdb e retornar um DataFrame do duckdb
-def ler_csv(caminho_arquivos):
-    df_duckdb = duckdb.read_csv(caminho_arquivos)
-    return df_duckdb
+def ler_arquivo(caminho_arquivos, tipo) -> DuckDBPyRelation:
+    """Lê o arquivo de acordo com o seu tipo e retorna um DataFrame do DuckDB.""",
+    if tipo == 'csv':
+        return duckdb.read_csv(caminho_arquivos)
+    elif tipo == 'json':
+        return duckdb.read_json(caminho_arquivos)
+    elif tipo == 'parquet':
+        return duckdb.read_parquet(caminho_arquivos)
+    else:
+        raise ValueError(f"Tipo de arquivo {tipo} não suportado. Use csv, json ou parquet.")
 
  # Transformação do df_duckdb para um df_Pandas
 def transformar(df: DuckDBPyRelation) -> DataFrame:
@@ -78,21 +87,24 @@ def salvar_no_postgres(df_pandas, tabela):
 # Execução principal
 if __name__ == "__main__":
     diretorio_local = './data'
-    lista_de_arquivos = listar_arquivos_csv(diretorio_local)
+
     con = conectar_banco()
     inicializar_tabela(con)
     arquivos_já_processados = arquivos_processados(con)
+    arquivos_e_tipos = listar_arquivos_e_tipos(diretorio_local)
 
-
-    for caminho_do_arquivo in lista_de_arquivos:
+    logs = []
+    for caminho_do_arquivo, tipo in arquivos_e_tipos:
         nome_arquivo = os.path.basename(caminho_do_arquivo)
         if nome_arquivo not in arquivos_já_processados:
-            duckdb_df = ler_csv(caminho_do_arquivo)
+            duckdb_df = ler_arquivo(caminho_do_arquivo, tipo)
             pandas_df_transformado = transformar(duckdb_df)
             salvar_no_postgres(pandas_df_transformado, 'vendas_calculado')
             registrar_arquivo(con, nome_arquivo)
             print(f"Arquivo {nome_arquivo} processado e salvo na tabela 'vendas_calculado'.")
+            logs.append(f"Arquivo {nome_arquivo} processado com sucesso.")
         else:
-            print(f"Arquivo {nome_arquivo} já foi processado anteriormente. Ignorando.")
+            print(f"Arquivo {nome_arquivo} já foi processado anteriormente.")
+            logs.append(f"Arquivo {nome_arquivo} já processado anteriormente.")
     con.close()
 
