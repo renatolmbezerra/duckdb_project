@@ -85,7 +85,8 @@ def salvar_no_postgres(df_pandas, tabela):
 
 
 # Execução principal
-if __name__ == "__main__":
+def pipeline() -> List[str]:
+    """Executa o pipeline de processamento de arquivos e retorna logs."""
     diretorio_local = './data'
 
     con = conectar_banco()
@@ -107,4 +108,9 @@ if __name__ == "__main__":
             print(f"Arquivo {nome_arquivo} já foi processado anteriormente.")
             logs.append(f"Arquivo {nome_arquivo} já processado anteriormente.")
     con.close()
+    return logs
+
+
+if __name__ == "__main__":
+    pipeline()
 
